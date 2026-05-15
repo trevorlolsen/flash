@@ -93,6 +93,12 @@ async function encryptCardData(card) {
       preserveLineBreaks: card.textMemoryCard.preserveLineBreaks,
       tokens: card.textMemoryCard.tokens
     });
+  } else if (card.type === "cloze" && card.clozeCard) {
+    result.clozeCard = await encryptCardPayload({
+      title: card.title, tags: card.tags,
+      text: card.clozeCard.text,
+      groupStats: card.clozeCard.groupStats
+    });
   }
   return result;
 }
@@ -121,6 +127,13 @@ async function decryptCardData(card) {
     result.title = dec.title !== undefined ? dec.title : card.title;
     result.tags = dec.tags !== undefined ? dec.tags : card.tags;
     result.textMemoryCard = { text: dec.text, preserveLineBreaks: dec.preserveLineBreaks, tokens: dec.tokens };
+  }
+  if (card.clozeCard && card.clozeCard.encrypted) {
+    const dec = await decryptCardPayload(card.clozeCard);
+    if (!dec) return null;
+    result.title = dec.title !== undefined ? dec.title : card.title;
+    result.tags = dec.tags !== undefined ? dec.tags : card.tags;
+    result.clozeCard = { text: dec.text, groupStats: dec.groupStats };
   }
   return result;
 }

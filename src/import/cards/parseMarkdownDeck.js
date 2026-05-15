@@ -1,5 +1,5 @@
 const RECOGNIZED_CARD_FIELDS = new Set([
-  "type", "title", "deck", "tags", "front", "back", "text", "notes", "source", "difficulty"
+  "type", "title", "deck", "tags", "front", "back", "text", "cloze", "notes", "source", "difficulty"
 ]);
 
 function isRecognizedField(name) {
@@ -99,7 +99,7 @@ function parseMarkdownDeck(text) {
 
     const base = {
       type,
-      title: raw.title || truncate(raw.front || raw.text || raw.side1 || "", 8),
+      title: raw.title || truncate(raw.front || raw.text || raw.cloze || raw.side1 || "", 8),
       deck: raw.deck || deckName,
       tags,
       source: raw.source || "",
@@ -108,6 +108,8 @@ function parseMarkdownDeck(text) {
 
     if (type === "text-memory") {
       base.text = raw.text || "";
+    } else if (type === "cloze") {
+      base.text = raw.cloze || raw.text || "";
     } else {
       const sideKeys = Object.keys(raw)
         .filter(k => /^side\d+$/.test(k))

@@ -1,6 +1,10 @@
 async function decryptCard(card) {
   if (!card) return null;
-  if (!card.standardCard?.encrypted && !card.textMemoryCard?.encrypted) return card;
+  if (
+    !card.standardCard?.encrypted &&
+    !card.textMemoryCard?.encrypted &&
+    !card.clozeCard?.encrypted
+  ) return card;
   return decryptCardData(card);
 }
 
@@ -32,6 +36,8 @@ async function renderReviewScreen(db) {
 
   if (card.type === "standard") {
     renderStandardReview(db, screen, card);
+  } else if (card.type === "cloze") {
+    renderClozeReview(db, screen, card);
   } else {
     renderTextMemoryReviewUI(db, screen, card);
   }
@@ -136,6 +142,54 @@ function renderRatingButtons(container, onRate) {
   container.appendChild(row);
 }
 
+// --- Cloze review ---
+function renderClozeReview(db, screen, card) {
+  const activeGroup = card.activeClozeGroup;
+  let reviewState = clozeReviewState.create(card, activeGroup);
+
+  const cardArea = el("div", { className: "card-area" });
+  const controls = el("div", { className: "review-controls review-controls--sticky" });
+
+  function render() {
+    cardArea.innerHTML = "";
+    controls.innerHTML = "";
+
+    if (reviewState.phase === "hidden") {
+      cardArea.appendChild(renderClozeFront(card, activeGroup));
+      controls.appendChild(el("button", {
+        className: "btn btn--primary btn--lg",
+        onClick: reveal
+      }, "Show Answer (Space)"));
+    } else {
+      cardArea.appendChild(renderClozeBack(card, activeGroup));
+      renderRatingButtons(controls, async (rating) => {
+        await submitClozeRating(db, rating);
+      });
+    }
+  }
+
+  function reveal() {
+    if (reviewState.phase === "hidden") {
+      reviewState = clozeReviewState.reveal(reviewState);
+      render();
+    }
+  }
+
+  screen.appendChild(cardArea);
+  screen.appendChild(controls);
+  render();
+  setupStandardKeyboard(reveal, async (rating) => {
+    if (reviewState.phase !== "revealed") return;
+    await submitClozeRating(db, rating);
+  });
+}
+
+async function submitClozeRating(db, rating) {
+  await reviewController.submitRating(rating);
+  removeKeyboardHandler();
+  renderReviewScreen(db);
+}
+
 // --- Text memory review ---
 function renderTextMemoryReviewUI(db, screen, card) {
   let state = textMemoryReview.create(card);
@@ -221,8 +275,10 @@ async function commitBlinding(db, card, state) {
   let cardToSave = updatedCard;
   if (cryptoIsUnlocked()) cardToSave = await encryptCardData(updatedCard);
   await repo.putCard(db, cardToSave);
-  // Sync queue so submitRating uses the updated card (not the stale pre-blinding version)
-  reviewController.session.queue[reviewController.session.index] = cardToSave;
+  // Sync the queue entry's card so submitRating uses the updated form (not the
+  // stale pre-blinding version).
+  const entry = reviewController.currentEntry();
+  if (entry) entry.card = cardToSave;
   await reviewController.submitRating(state.rating);
   removeKeyboardHandler();
   renderReviewScreen(db);

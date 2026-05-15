@@ -16,6 +16,9 @@ function parseJsonCards(text) {
     };
     if (type === "text-memory") {
       base.text = c.text || "";
+    } else if (type === "cloze") {
+      base.text = c.text || c.cloze || "";
+      if (c.groupStats) base.groupStats = c.groupStats;
     } else {
       if (Array.isArray(c.sides) && c.sides.length > 0) {
         base.sides = c.sides.map(s => ({

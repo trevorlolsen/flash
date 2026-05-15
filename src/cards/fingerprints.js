@@ -12,3 +12,7 @@ async function fingerprintStandard(sidesOrFront, maybeBack) {
 async function fingerprintTextMemory(text) {
   return sha256(normalizeText(text));
 }
+
+async function fingerprintCloze(text) {
+  return sha256("cloze::" + normalizeText(text));
+}

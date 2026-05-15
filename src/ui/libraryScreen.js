@@ -64,7 +64,8 @@ async function renderLibraryScreen(db) {
   }},
     el("option", { value: "all" }, "All types"),
     el("option", { value: "standard" }, "Standard"),
-    el("option", { value: "text-memory" }, "Text Memory")
+    el("option", { value: "text-memory" }, "Text Memory"),
+    el("option", { value: "cloze" }, "Cloze")
   );
   filterBar.appendChild(typeFilter);
   screen.appendChild(filterBar);
@@ -152,10 +153,20 @@ function cardMatchesFilter(card, filterState) {
     const sides = getStandardSides(card);
     if (sides.length > 0) parts.push(sides.map(s => s.markdown).join("\n"));
     if (card.textMemoryCard && card.textMemoryCard.text) parts.push(card.textMemoryCard.text);
+    if (card.clozeCard && card.clozeCard.text) parts.push(card.clozeCard.text);
     if (!parts.join("\n").toLowerCase().includes(filterState.search)) return false;
   }
 
   return true;
+}
+
+function _libraryTypeLabel(card) {
+  if (card.type === "cloze") {
+    const groups = card.clozeCard && card.clozeCard.groupStats ? Object.keys(card.clozeCard.groupStats) : [];
+    return `Cloze (${groups.length})`;
+  }
+  if (card.type === "text-memory") return "Text";
+  return "Standard";
 }
 
 function renderCardRow(db, card) {
@@ -165,7 +176,7 @@ function renderCardRow(db, card) {
     hasReverseLink ? el("span", { className: "reverse-badge", title: "Reverse companion link" }, "⇄ ") : null,
     card.title || "Untitled"
   ));
-  row.appendChild(el("div", { className: "card-row-type" }, card.type === "text-memory" ? "Text" : "Standard"));
+  row.appendChild(el("div", { className: "card-row-type" }, _libraryTypeLabel(card)));
   row.appendChild(renderDueChip(card));
   row.appendChild(renderMasteryBar(card.cardStats.masteryPercent));
   row.appendChild(el("button", { className: "btn btn--ghost btn--sm", onClick: () => showEditCardModal(db, card) }, "Edit"));

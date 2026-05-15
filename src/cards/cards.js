@@ -38,6 +38,7 @@ function createCard(type, fields = {}) {
     fingerprint: fields.fingerprint || null,
     standardCard: null,
     textMemoryCard: null,
+    clozeCard: null,
     cardStats: buildCardStats(),
     createdAt: ts,
     updatedAt: ts,
@@ -70,7 +71,65 @@ function createCard(type, fields = {}) {
     };
   }
 
+  if (type === "cloze") {
+    const text = fields.text || "";
+    const keys = clozeGroupKeys(text);
+    const groupStats = {};
+    const incoming = fields.groupStats || {};
+    for (const k of keys) {
+      groupStats[k] = incoming[k] || buildCardStats();
+    }
+    card.clozeCard = { text, groupStats };
+    refreshClozeAggregate(card);
+  }
+
   return card;
+}
+
+// Aggregate per-group stats onto card.cardStats so the queue/library/etc. can
+// treat a cloze card like any other when no group context is known.
+// Aggregate mastery is the average across groups; nextDueAt is the earliest.
+function refreshClozeAggregate(card) {
+  if (card.type !== "cloze" || !card.clozeCard) return;
+  const groups = card.clozeCard.groupStats || {};
+  const keys = Object.keys(groups);
+  if (!keys.length) {
+    card.cardStats = buildCardStats();
+    return;
+  }
+  let masterySum = 0;
+  let totalReviews = 0;
+  let successfulReviews = 0;
+  let failedReviews = 0;
+  let failedRecently = false;
+  let earliestDue = Infinity;
+  let lastSeenAt = null;
+  for (const k of keys) {
+    const g = groups[k] || buildCardStats();
+    masterySum += g.masteryPercent || 0;
+    totalReviews += g.totalReviews || 0;
+    successfulReviews += g.successfulReviews || 0;
+    failedReviews += g.failedReviews || 0;
+    if (g.failedRecently) failedRecently = true;
+    if (g.nextDueAt) {
+      const t = new Date(g.nextDueAt).getTime();
+      if (t < earliestDue) earliestDue = t;
+    }
+    if (g.lastSeenAt && (!lastSeenAt || g.lastSeenAt > lastSeenAt)) {
+      lastSeenAt = g.lastSeenAt;
+    }
+  }
+  card.cardStats = {
+    totalReviews,
+    successfulReviews,
+    failedReviews,
+    lastSeenAt,
+    nextDueAt: earliestDue === Infinity ? new Date().toISOString() : new Date(earliestDue).toISOString(),
+    intervalDays: 0,
+    ease: 2.5,
+    masteryPercent: masterySum / keys.length,
+    failedRecently
+  };
 }
 
 function updateCard(card, fields) {

@@ -1,4 +1,4 @@
-const CACHE_NAME = "flash-v1";
+const CACHE_NAME = "flash-v2";
 
 const FILES_TO_CACHE = [
   ".",
@@ -20,16 +20,19 @@ const FILES_TO_CACHE = [
   "src/db/db.js",
   "src/db/repositories.js",
   "src/cards/tokenizer.js",
+  "src/cards/clozeParser.js",
   "src/cards/fingerprints.js",
   "src/cards/cards.js",
   "src/review/scheduler.js",
   "src/review/adaptiveBlinding.js",
   "src/review/standardReview.js",
   "src/review/textMemoryReview.js",
+  "src/review/clozeReview.js",
   "src/review/reviewController.js",
   "src/render/markdownRenderer.js",
   "src/render/standardRenderer.js",
   "src/render/textMemoryRenderer.js",
+  "src/render/clozeRenderer.js",
   "src/render/progressRenderer.js",
   "src/import/detectImportKind.js",
   "src/import/cards/parseMarkdownDeck.js",

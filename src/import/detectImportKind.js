@@ -20,6 +20,7 @@ function detectImportKind(fileName, text) {
     text.includes("Front:") ||
     text.includes("Back:") ||
     text.includes("Text:") ||
+    text.includes("Cloze:") ||
     text.includes("# Deck:") ||
     text.includes("Deck:") ||
     /(^|\n)\s*Side\s*\d+\s*:/.test(text)

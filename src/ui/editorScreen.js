@@ -2,7 +2,7 @@ async function renderEditorScreen(db, existingCard, deckId) {
   const screen = document.getElementById("screen-editor");
   screen.innerHTML = "";
 
-  if (existingCard && (existingCard.standardCard?.encrypted || existingCard.textMemoryCard?.encrypted)) {
+  if (existingCard && (existingCard.standardCard?.encrypted || existingCard.textMemoryCard?.encrypted || existingCard.clozeCard?.encrypted)) {
     existingCard = await decryptCardData(existingCard);
     if (!existingCard) { showToast("Cannot decrypt card — vault may be locked.", "error"); return; }
   }
@@ -37,7 +37,8 @@ async function renderEditorScreen(db, existingCard, deckId) {
     el("label", { className: "form-label" }, "Card Type"),
     el("select", { className: "form-select", id: "editor-type", onChange: () => updateEditorFields() },
       el("option", { value: "standard", ...(cardType === "standard" ? { selected: "selected" } : {}) }, "Standard Flashcard"),
-      el("option", { value: "text-memory", ...(cardType === "text-memory" ? { selected: "selected" } : {}) }, "Text Memorization")
+      el("option", { value: "text-memory", ...(cardType === "text-memory" ? { selected: "selected" } : {}) }, "Text Memorization"),
+      el("option", { value: "cloze", ...(cardType === "cloze" ? { selected: "selected" } : {}) }, "Cloze Deletion")
     )
   );
   form.appendChild(typeRow);
@@ -105,8 +106,9 @@ async function renderEditorScreen(db, existingCard, deckId) {
     const type = document.getElementById("editor-type").value;
 
     if (!skipCheck && type !== currentFieldType) {
-      const textEl  = document.getElementById("editor-text");
-      let hasContent = textEl && textEl.value.trim();
+      const textEl = document.getElementById("editor-text");
+      const clozeEl = document.getElementById("editor-cloze-text");
+      let hasContent = (textEl && textEl.value.trim()) || (clozeEl && clozeEl.value.trim());
       if (!hasContent && editorSides) {
         const vals = collectSideValues() || [];
         hasContent = vals.some(s => (s.markdown || "").trim());
@@ -123,7 +125,9 @@ async function renderEditorScreen(db, existingCard, deckId) {
             editorSides = null;
             fieldsContainer.innerHTML = "";
             if (type === "standard") renderStandardFields(null);
+            else if (type === "cloze") renderClozeFields(null);
             else renderTextMemoryFields(null);
+            reverseCompanionRow.style.display = type === "standard" ? "" : "none";
           }
         );
         return;
@@ -133,6 +137,7 @@ async function renderEditorScreen(db, existingCard, deckId) {
     currentFieldType = type;
     fieldsContainer.innerHTML = "";
     if (type === "standard") renderStandardFields(existingCard);
+    else if (type === "cloze") { editorSides = null; renderClozeFields(existingCard); }
     else { editorSides = null; renderTextMemoryFields(existingCard); }
     reverseCompanionRow.style.display = type === "standard" ? "" : "none";
   }
@@ -362,6 +367,76 @@ async function renderEditorScreen(db, existingCard, deckId) {
     textarea.addEventListener("input", updateTokenPreview);
   }
 
+  function renderClozeFields(card) {
+    const text = card && card.clozeCard ? card.clozeCard.text || "" : "";
+    const textarea = el("textarea", {
+      className: "form-textarea form-textarea--tall", id: "editor-cloze-text",
+      placeholder: "Use {{c1::content}} or {{c1::content::hint}} to mark cloze deletions. Multiple groups are independent review entries.",
+      rows: "8"
+    }, text);
+
+    fieldsContainer.appendChild(el("div", { className: "form-row" },
+      el("label", { className: "form-label" }, "Source Text"),
+      textarea,
+      el("div", { className: "form-help" }, "Example: The capital of {{c1::France}} is {{c2::Paris::city}}.")
+    ));
+
+    const groupsPanel = el("div", { className: "cloze-groups-panel" });
+    fieldsContainer.appendChild(el("div", { className: "form-row" },
+      el("label", { className: "form-label" }, "Cloze Groups"),
+      groupsPanel
+    ));
+
+    const previewEl = el("div", { className: "md-preview" });
+    fieldsContainer.appendChild(el("div", { className: "form-row" },
+      el("label", { className: "form-label form-label--small" }, "Preview (back side)"),
+      previewEl
+    ));
+
+    function updateClozePreview() {
+      const txt = textarea.value;
+      const { groups } = parseCloze(txt);
+      const keys = Array.from(groups.keys()).sort((a, b) =>
+        parseInt(a.slice(1), 10) - parseInt(b.slice(1), 10));
+
+      groupsPanel.innerHTML = "";
+      if (!keys.length) {
+        groupsPanel.appendChild(el("div", { className: "cloze-groups-empty" },
+          "No cloze groups detected. Wrap text in {{c1::...}} to create one."));
+      } else {
+        groupsPanel.appendChild(el("div", { className: "cloze-groups-count" },
+          `${keys.length} cloze group${keys.length === 1 ? "" : "s"} detected:`));
+        const list = el("ul", { className: "cloze-groups-list" });
+        for (const key of keys) {
+          const g = groups.get(key);
+          const raw = g.content || "";
+          const previewText = raw.length > 60 ? raw.slice(0, 60) + "…" : raw;
+          const hintSuffix = g.hint !== undefined ? ` — hint: "${g.hint}"` : "";
+          list.appendChild(el("li", {},
+            el("strong", {}, key),
+            ": ",
+            previewText,
+            hintSuffix
+          ));
+        }
+        groupsPanel.appendChild(list);
+      }
+
+      // Preview the fully-revealed back text
+      previewEl.innerHTML = "";
+      let backText = "";
+      const { segments } = parseCloze(txt);
+      for (const seg of segments) {
+        if (seg.type === "text") backText += seg.value;
+        else backText += seg.value;
+      }
+      previewEl.appendChild(renderMarkdown(backText));
+    }
+
+    textarea.addEventListener("input", updateClozePreview);
+    updateClozePreview();
+  }
+
   // Save button
   const saveBtn = el("button", { className: "btn btn--primary btn--lg",
     onClick: () => saveCard(db, existingCard, collectSideValues) }, "Save Card");
@@ -404,6 +479,22 @@ async function saveCard(db, existingCard, collectSides) {
     }
     fields.sides = sides.map(s => ({ markdown: s.markdown || "" }));
     fields.fingerprint = await fingerprintStandard(fields.sides);
+  } else if (type === "cloze") {
+    fields.text = document.getElementById("editor-cloze-text").value;
+    const keys = clozeGroupKeys(fields.text);
+    if (keys.length < 1) {
+      showToast("Cloze cards need at least 1 cloze group (e.g. {{c1::...}}).", "error");
+      return;
+    }
+    // Preserve groupStats for unchanged groups; reset for new ones.
+    const existingStats = existingCard && existingCard.clozeCard
+      ? (existingCard.clozeCard.groupStats || {})
+      : {};
+    fields.groupStats = {};
+    for (const k of keys) {
+      fields.groupStats[k] = existingStats[k] || buildCardStats();
+    }
+    fields.fingerprint = await fingerprintCloze(fields.text);
   } else {
     fields.text = document.getElementById("editor-text").value;
     if (existingCard && existingCard.textMemoryCard) {
@@ -427,14 +518,25 @@ async function saveCard(db, existingCard, collectSides) {
         title: fields.title, deckId: fields.deckId, tags: fields.tags, fingerprint: fields.fingerprint,
         type: "standard",
         standardCard: { sides: fields.sides },
-        textMemoryCard: existingCard.type === "standard" ? existingCard.textMemoryCard : null
+        textMemoryCard: existingCard.type === "standard" ? existingCard.textMemoryCard : null,
+        clozeCard: existingCard.type === "standard" ? existingCard.clozeCard : null
       });
+    } else if (type === "cloze") {
+      updated = updateCard(existingCard, {
+        title: fields.title, deckId: fields.deckId, tags: fields.tags, fingerprint: fields.fingerprint,
+        type: "cloze",
+        clozeCard: { text: fields.text, groupStats: fields.groupStats },
+        standardCard: existingCard.type === "cloze" ? existingCard.standardCard : null,
+        textMemoryCard: existingCard.type === "cloze" ? existingCard.textMemoryCard : null
+      });
+      refreshClozeAggregate(updated);
     } else {
       updated = updateCard(existingCard, {
         title: fields.title, deckId: fields.deckId, tags: fields.tags, fingerprint: fields.fingerprint,
         type: "text-memory",
         textMemoryCard: { text: fields.text, preserveLineBreaks: true, tokens: fields.tokens },
-        standardCard: existingCard.type === "text-memory" ? existingCard.standardCard : null
+        standardCard: existingCard.type === "text-memory" ? existingCard.standardCard : null,
+        clozeCard: existingCard.type === "text-memory" ? existingCard.clozeCard : null
       });
     }
     if (wantsCompanion) updated.hasReverseCompanion = true;

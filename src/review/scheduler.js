@@ -1,6 +1,4 @@
-function updateSchedule(card, rating) {
-  const stats = card.cardStats;
-
+function updateScheduleFor(stats, rating) {
   if (rating === "again") {
     stats.intervalDays = 0.25;
     stats.ease = Math.max(1.3, stats.ease - 0.3);
@@ -31,6 +29,18 @@ function updateSchedule(card, rating) {
   stats.lastSeenAt = new Date().toISOString();
   stats.nextDueAt = addDays(new Date(), stats.intervalDays).toISOString();
 
+  return stats;
+}
+
+function updateSchedule(card, rating, clozeGroup) {
+  if (card.type === "cloze" && card.clozeCard) {
+    if (!clozeGroup) throw new Error("updateSchedule on a cloze card requires clozeGroup");
+    const stats = card.clozeCard.groupStats[clozeGroup];
+    if (!stats) throw new Error(`Cloze card has no group "${clozeGroup}"`);
+    updateScheduleFor(stats, rating);
+    return card;
+  }
+  updateScheduleFor(card.cardStats, rating);
   return card;
 }
 

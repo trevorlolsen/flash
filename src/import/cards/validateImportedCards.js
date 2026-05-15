@@ -6,7 +6,7 @@ function validateImportedCards(cards) {
     const card = cards[i];
     const label = card.title ? `"${card.title}"` : `Card ${i + 1}`;
 
-    if (!card.type || !["standard", "text-memory"].includes(card.type)) {
+    if (!card.type || !["standard", "text-memory", "cloze"].includes(card.type)) {
       errors.push({ index: i, card, message: `${label}: unknown card type "${card.type}"` });
       continue;
     }
@@ -30,6 +30,18 @@ function validateImportedCards(cards) {
     if (card.type === "text-memory") {
       if (!card.text) {
         errors.push({ index: i, card, message: `${label}: text-memory card missing Text` });
+        continue;
+      }
+    }
+
+    if (card.type === "cloze") {
+      if (!card.text) {
+        errors.push({ index: i, card, message: `${label}: cloze card missing Cloze text` });
+        continue;
+      }
+      const keys = clozeGroupKeys(card.text);
+      if (keys.length < 1) {
+        errors.push({ index: i, card, message: `${label}: cloze card needs at least one {{c1::...}} group` });
         continue;
       }
     }

@@ -38,6 +38,8 @@ async function saveImportedCards(db, parsedDecks, validCards) {
             { markdown: rawCard.backMarkdown || rawCard.back || "" }
           ];
       fp = await fingerprintStandard(sides);
+    } else if (rawCard.type === "cloze") {
+      fp = await fingerprintCloze(rawCard.text);
     } else {
       fp = await fingerprintTextMemory(rawCard.text);
     }
@@ -59,7 +61,8 @@ async function saveImportedCards(db, parsedDecks, validCards) {
       tags: rawCard.tags || [],
       fingerprint: fp,
       sides,
-      text: rawCard.text
+      text: rawCard.text,
+      groupStats: rawCard.groupStats
     });
 
     if (cryptoIsUnlocked()) newCard = await encryptCardData(newCard);

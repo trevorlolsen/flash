@@ -2,9 +2,22 @@ const reviewController = {
   session: null,
 
   async startSession(db, deckId, settings = {}) {
-    const allCards = deckId
+    const rawCards = deckId
       ? await repo.getCardsByDeck(db, deckId)
       : await repo.getAllCards(db);
+
+    // Cloze cards keep groupStats inside the encrypted payload, so they must
+    // be decrypted before we can decide which groups are due. Other card types
+    // keep cardStats outside the payload, so they can stay encrypted in queue.
+    const allCards = [];
+    for (const c of rawCards) {
+      if (c.type === "cloze" && c.clozeCard && c.clozeCard.encrypted && cryptoIsUnlocked()) {
+        const dec = await decryptCardData(c);
+        if (dec) allCards.push(dec);
+      } else {
+        allCards.push(c);
+      }
+    }
 
     const sessionSettings = {
       targetCardCount: 20,
@@ -16,7 +29,29 @@ const reviewController = {
       ...settings
     };
 
-    const queue = buildSessionQueue(allCards, sessionSettings, Date.now());
+    const cardQueue = buildSessionQueue(allCards, sessionSettings, Date.now());
+
+    // Expand cloze cards into one virtual entry per group that is due (or new).
+    // Non-cloze entries are wrapped uniformly as { card } so the queue is
+    // homogeneous internally.
+    const queue = [];
+    const nowMs = Date.now();
+    for (const card of cardQueue) {
+      if (card.type === "cloze" && card.clozeCard && card.clozeCard.groupStats) {
+        const keys = Object.keys(card.clozeCard.groupStats);
+        for (const key of keys) {
+          const stats = card.clozeCard.groupStats[key];
+          const dueTime = stats && stats.nextDueAt ? new Date(stats.nextDueAt).getTime() : 0;
+          const isNew = !stats || stats.totalReviews === 0;
+          const isFailedRecently = stats && stats.failedRecently;
+          if (dueTime <= nowMs || isNew || isFailedRecently) {
+            queue.push({ card, clozeGroup: key });
+          }
+        }
+      } else {
+        queue.push({ card });
+      }
+    }
 
     if (!queue.length) return null;
 
@@ -29,7 +64,7 @@ const reviewController = {
       deckId: deckId || null,
       targetCardCount: sessionSettings.targetCardCount,
       cardsReviewed: [],
-      reviewQueue: queue.map(c => c.id),
+      reviewQueue: queue.map(e => e.clozeGroup ? `${e.card.id}::${e.clozeGroup}` : e.card.id),
       settings: sessionSettings,
       createdAt: ts,
       updatedAt: ts,
@@ -41,7 +76,7 @@ const reviewController = {
     this.session = {
       db,
       sessionId,
-      queue: [...queue],
+      queue,
       index: 0,
       failedCards: [],
       record: sessionRecord,
@@ -51,48 +86,92 @@ const reviewController = {
     return this.session;
   },
 
-  currentCard() {
+  currentEntry() {
     if (!this.session) return null;
     const { queue, index, failedCards } = this.session;
     if (index < queue.length) return queue[index];
-    // Repeat failed cards at the end
-    if (failedCards.length) return failedCards.shift();
+    if (failedCards.length) return failedCards[0];
     return null;
+  },
+
+  currentCard() {
+    const entry = this.currentEntry();
+    if (!entry) return null;
+    if (entry.clozeGroup) {
+      // Shallow-clone so activeClozeGroup doesn't leak onto the shared card,
+      // which is reused across this card's other virtual entries.
+      return { ...entry.card, activeClozeGroup: entry.clozeGroup };
+    }
+    return entry.card;
   },
 
   async submitRating(rating) {
     if (!this.session) return;
     const { db, sessionId } = this.session;
-    const card = this.currentCard();
-    if (!card) return;
+    const entry = this.currentEntry();
+    if (!entry) return;
+
+    // If we're consuming the failed-cards queue (past the main queue), shift
+    // it now so subsequent currentEntry() returns the next failure.
+    let fromFailedQueue = false;
+    if (this.session.index >= this.session.queue.length && this.session.failedCards.length) {
+      this.session.failedCards.shift();
+      fromFailedQueue = true;
+    }
+
+    const card = entry.card;
+    const clozeGroup = entry.clozeGroup || null;
 
     const surfacedAt = this.session.currentCardSurfacedAt || Date.now();
     const totalTimeMs = Math.max(0, Date.now() - surfacedAt);
 
-    const previousInterval = card.cardStats.intervalDays;
-    const previousDue = card.cardStats.nextDueAt;
+    const statsForRating = clozeGroup
+      ? card.clozeCard.groupStats[clozeGroup]
+      : card.cardStats;
 
-    updateSchedule(card, rating);
+    const previousInterval = statsForRating.intervalDays;
+    const previousDue = statsForRating.nextDueAt;
+
+    updateSchedule(card, rating, clozeGroup);
 
     const masteryDelta = computeMasteryDelta(card, rating);
-    card.cardStats.masteryPercent = Math.min(1, Math.max(0, (card.cardStats.masteryPercent || 0) + masteryDelta));
+    if (clozeGroup) {
+      const gs = card.clozeCard.groupStats[clozeGroup];
+      gs.masteryPercent = Math.min(1, Math.max(0, (gs.masteryPercent || 0) + masteryDelta));
+      refreshClozeAggregate(card);
+    } else {
+      card.cardStats.masteryPercent = Math.min(1, Math.max(0, (card.cardStats.masteryPercent || 0) + masteryDelta));
+    }
 
-    await repo.putCard(db, card);
+    // For cloze cards, groupStats lives inside the encrypted payload, so we
+    // must re-encrypt before saving. Other types keep cardStats outside the
+    // payload and can be saved as-is.
+    if (clozeGroup && cryptoIsUnlocked()) {
+      const toSave = await encryptCardData(card);
+      await repo.putCard(db, toSave);
+    } else {
+      await repo.putCard(db, card);
+    }
+
+    const newStats = clozeGroup
+      ? card.clozeCard.groupStats[clozeGroup]
+      : card.cardStats;
 
     const reviewId = generateId("review");
     const reviewRecord = {
       id: reviewId,
       cardId: card.id,
       cardType: card.type,
+      clozeGroup,
       sessionId,
       reviewedAt: now(),
       userRating: rating,
       interactionStats: { totalTimeMs },
       result: {
         previousIntervalDays: previousInterval,
-        newIntervalDays: card.cardStats.intervalDays,
+        newIntervalDays: newStats.intervalDays,
         previousNextDueAt: previousDue,
-        nextDueAt: card.cardStats.nextDueAt,
+        nextDueAt: newStats.nextDueAt,
         masteryDelta
       },
       createdAt: now(),
@@ -101,16 +180,16 @@ const reviewController = {
 
     await repo.putReview(db, reviewRecord);
 
-    // Track failed cards for repeat
     if (rating === "again" && this.session.record.settings.repeatFailedCards) {
-      this.session.failedCards.push(card);
+      this.session.failedCards.push(entry);
     }
 
-    this.session.record.cardsReviewed.push(card.id);
+    const reviewedLabel = clozeGroup ? `${card.id}::${clozeGroup}` : card.id;
+    this.session.record.cardsReviewed.push(reviewedLabel);
     this.session.record.updatedAt = now();
     await repo.putSession(db, this.session.record);
 
-    this.session.index++;
+    if (!fromFailedQueue) this.session.index++;
     this.session.currentCardSurfacedAt = Date.now();
   },
 
@@ -124,7 +203,7 @@ const reviewController = {
 
   isComplete() {
     if (!this.session) return true;
-    return !this.currentCard();
+    return !this.currentEntry();
   }
 };
 

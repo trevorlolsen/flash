@@ -228,6 +228,23 @@ html, body { height: 100%; font-family: var(--font); background: var(--bg); colo
 .session-complete h2 { font-size: 1.75rem; margin-bottom: 1rem; }
 .session-complete p { color: var(--text-muted); margin-bottom: 1.5rem; }
 
+/* ── Cloze ── */
+.cloze-face { font-size: 1.1rem; line-height: 1.7; }
+.cloze-active {
+  background: rgba(99, 102, 241, .18);
+  border-radius: 3px;
+  padding: 0 .25rem;
+  font-weight: 600;
+}
+.cloze-groups-panel {
+  border: 1px solid var(--border); border-radius: var(--radius);
+  padding: .75rem; background: var(--bg-secondary);
+}
+.cloze-groups-empty { color: var(--text-muted); font-style: italic; }
+.cloze-groups-count { font-size: .9rem; color: var(--text-muted); margin-bottom: .5rem; }
+.cloze-groups-list { margin: 0; padding-left: 1.25rem; }
+.cloze-groups-list li { margin-bottom: .25rem; }
+
 /* ── Text memory tokens ── */
 .text-memory-body { font-size: 1.15rem; line-height: 2.2; word-spacing: .1em; }
 
