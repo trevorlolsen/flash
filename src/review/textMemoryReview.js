@@ -11,8 +11,13 @@ const textMemoryReview = {
       clickedThisReview: new Set(),
       rating: null,
       suggestedTokens: null,
-      customizing: false
+      customizing: false,
+      peekAll: false
     };
+  },
+
+  togglePeekAll(state) {
+    return { ...state, peekAll: !state.peekAll };
   },
 
   clickWord(state, wordIndex) {

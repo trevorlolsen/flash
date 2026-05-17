@@ -210,6 +210,7 @@ function renderTextMemoryReviewUI(db, screen, card) {
       tempRevealed: state.tempRevealed,
       phase: state.phase,
       customizing: state.customizing,
+      peekAll: state.peekAll,
       onWordClick: (idx) => {
         if (state.phase === "blinding" && state.customizing) {
           state = textMemoryReview.cycleWord(state, idx);
@@ -221,6 +222,11 @@ function renderTextMemoryReviewUI(db, screen, card) {
     }));
 
     if (state.phase === "recall") {
+      const peekLabel = state.peekAll ? "Hide Full Text (P)" : "Peek Full Text (P)";
+      controls.appendChild(el("button", { className: "btn btn--ghost", onClick: () => {
+        state = textMemoryReview.togglePeekAll(state);
+        render();
+      }}, peekLabel));
       controls.appendChild(el("button", { className: "btn btn--primary btn--lg", onClick: () => {
         state = textMemoryReview.showFullText(state);
         render();
@@ -262,7 +268,8 @@ function renderTextMemoryReviewUI(db, screen, card) {
       k: async () => { if (state.phase === "blinding") await commitBlinding(db, card, state); },
       e: () => { if (state.phase === "blinding") { state = textMemoryReview.makeEasier(state); render(); } },
       h: () => { if (state.phase === "blinding") { state = textMemoryReview.makeHarder(state); render(); } },
-      c: () => { if (state.phase === "blinding") { state = textMemoryReview.startCustomizing(state); render(); } }
+      c: () => { if (state.phase === "blinding") { state = textMemoryReview.startCustomizing(state); render(); } },
+      p: () => { if (state.phase === "recall") { state = textMemoryReview.togglePeekAll(state); render(); } }
     }
   );
 }
@@ -323,6 +330,7 @@ function setupTextMemoryKeyboard(onReveal, onRate, blindingKeys = {}) {
     if (e.key === "e" || e.key === "E") blindingKeys.e && blindingKeys.e();
     if (e.key === "h" || e.key === "H") blindingKeys.h && blindingKeys.h();
     if (e.key === "c" || e.key === "C") blindingKeys.c && blindingKeys.c();
+    if (e.key === "p" || e.key === "P") blindingKeys.p && blindingKeys.p();
   };
   document.addEventListener("keydown", _keyHandler);
 }

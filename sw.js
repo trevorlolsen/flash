@@ -1,4 +1,4 @@
-const CACHE_NAME = "flash-v5";
+const CACHE_NAME = "flash-v6";
 
 const FILES_TO_CACHE = [
   ".",

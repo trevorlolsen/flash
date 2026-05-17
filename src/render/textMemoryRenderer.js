@@ -1,5 +1,5 @@
 function renderTokens(tokens, opts = {}) {
-  const { tempRevealed = new Set(), phase = "recall", customizing = false, onWordClick } = opts;
+  const { tempRevealed = new Set(), phase = "recall", customizing = false, peekAll = false, onWordClick } = opts;
   const container = document.createElement("div");
   container.className = "text-memory-body";
 
@@ -26,7 +26,7 @@ function renderTokens(tokens, opts = {}) {
     const span = document.createElement("span");
     span.dataset.index = token.index;
 
-    const isRevealed = tempRevealed.has(token.index) || phase === "revealed";
+    const isRevealed = peekAll || tempRevealed.has(token.index) || phase === "revealed";
     const effectiveMode = isRevealed ? "full" : token.visibleMode;
 
     span.className = `token-word mode-${effectiveMode}`;

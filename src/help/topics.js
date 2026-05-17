@@ -244,14 +244,15 @@ See [How spaced repetition works](#topic-sr-algorithm) for the exact mechanics.
 | **4** | Rate *Easy* |
 | **5** | Rate *Perfect* |
 
-**Text memorization extras** (between reveal and rating):
+**Text memorization extras:**
 
 | Key | Action |
 |---|---|
-| **K** | Keep current blinding |
-| **E** | Make easier |
-| **H** | Make harder |
-| **C** | Cycle blinding mode |
+| **P** | Peek full text (toggle) — during recall, flip between blinded and full |
+| **K** | Keep current blinding — between reveal and rating |
+| **E** | Make easier — between reveal and rating |
+| **H** | Make harder — between reveal and rating |
+| **C** | Cycle blinding mode — between reveal and rating |
 `.trim()
   },
   {
@@ -673,14 +674,15 @@ If you want extra at-rest protection, enable [encryption](#topic-encryption).
 | Space | Reveal next side / answer |
 | 1 / 2 / 3 / 4 / 5 | Again / Hard / Good / Easy / Perfect |
 
-**Text memorization (between reveal and rating)**
+**Text memorization**
 
-| Key | Action |
-|---|---|
-| K | Keep current blinding |
-| E | Easier |
-| H | Harder |
-| C | Cycle blinding mode |
+| Key | Action | When |
+|---|---|---|
+| P | Peek full text (toggle) | During recall |
+| K | Keep current blinding | Between reveal and rating |
+| E | Easier | Between reveal and rating |
+| H | Harder | Between reveal and rating |
+| C | Cycle blinding mode | Between reveal and rating |
 
 **Modals**
 
